@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import joblib
+import numpy as np
 from sklearn.metrics import mean_squared_error, r2_score
 
 # Importación de tus funciones locales
@@ -87,18 +88,27 @@ with tab_eval:
             p_knn = knn.predict(X_test_scaled)
             p_rf = rf.predict(X_test)
             
-            # Métricas
+            # Métricas calculando RMSE (Raíz de MSE)
             res = pd.DataFrame({
                 "Modelo": ["Regresión Lineal", "KNN", "Random Forest"],
-                "MSE": [mean_squared_error(y_test, p_lr), mean_squared_error(y_test, p_knn), mean_squared_error(y_test, p_rf)],
+                "RMSE": [
+                    mean_squared_error(y_test, p_lr, squared=False),
+                    mean_squared_error(y_test, p_knn, squared=False),
+                    mean_squared_error(y_test, p_rf, squared=False)
+                ],
                 "R2 Score": [r2_score(y_test, p_lr), r2_score(y_test, p_knn), r2_score(y_test, p_rf)]
             })
 
+            # Guardar métricas para uso en el simulador
+            st.session_state['metricas_globales'] = res
             st.table(res)
             
-            # Identificación automática del mejor modelo
-            mejor = res.loc[res["R2 Score"].idxmax()]
-            st.info(f"Análisis: El modelo '{mejor['Modelo']}' es el más preciso para este dataset (R2: {mejor['R2 Score']:.4f}).")
+            # Identificación del mejor modelo
+            mejor_r2 = res.loc[res["R2 Score"].idxmax()]
+            mejor_rmse = res.loc[res["RMSE"].idxmin()]
+            st.session_state['mejor_modelo_nombre'] = mejor_r2['Modelo']
+            
+            st.info(f"**Análisis:** El modelo '{mejor_r2['Modelo']}' es el líder en precisión (R2: {mejor_r2['R2 Score']:.4f}), mientras que '{mejor_rmse['Modelo']}' tiene el menor error promedio (RMSE: {mejor_rmse['RMSE']:.4f}).")
             
             st.bar_chart(res.set_index("Modelo")["R2 Score"])
         else:
@@ -110,19 +120,22 @@ with tab_sim:
     if 'modelos' in st.session_state:
         lr, knn, rf, scaler = st.session_state['modelos']
         
-        # Inicializar un estado para el aviso si no existe
+        # Inicializar estado de interacción
         if 'sim_interactuado' not in st.session_state:
             st.session_state['sim_interactuado'] = False
 
-        # --- AVISO DINÁMICO ---
+        # --- SECCIÓN DE AVISOS ---
         if not st.session_state['sim_interactuado']:
-            st.warning("ℹ️ Los valores mostrados abajo son predicciones base (brutas). Ajuste los sliders para actualizar el cálculo.")
+            st.warning("ℹ️ Valores base (brutos). Mueva los sliders para generar predicciones personalizadas.")
         else:
-            st.success("✅ Predicciones actualizadas con éxito según los parámetros manuales.")
+            msg = "✅ Cuadro comparativo actualizado."
+            if 'mejor_modelo_nombre' in st.session_state:
+                msg += f" Sugerencia técnica: Priorice el resultado de **{st.session_state['mejor_modelo_nombre']}**."
+            st.success(msg)
         
         st.write("Ajuste los parámetros para ver cómo responden los tres modelos simultáneamente.")
         
-        # Layout de controles
+        # Controles de usuario
         col1, col2, col3 = st.columns(3)
         with col1:
             fc = st.slider("Frecuencia Cardíaca (bpm)", 60, 200, 140)
@@ -136,35 +149,51 @@ with tab_sim:
             
         tiempo = st.number_input("Tiempo total de actividad (min)", 1, 300, 60)
 
-        # Preparación y Predicción
-        datos_entrada = pd.DataFrame([[fc, pot, cad, tiempo, temp, pend, vel]], 
-                                    columns=['frecuencia_cardiaca', 'potencia', 'cadencia', 'tiempo', 'temperatura', 'pendiente', 'velocidad'])
-        
-        # Detectar cambio en sliders para cambiar el aviso
-        # (Si los valores son distintos a los por defecto, marcamos como interactuado)
+        # Detectar interacción
         if fc != 140 or pot != 200 or cad != 85: 
             st.session_state['sim_interactuado'] = True
 
+        # Preparación de datos (Input Manual)
+        datos_entrada = pd.DataFrame([[fc, pot, cad, tiempo, temp, pend, vel]], 
+                                    columns=['frecuencia_cardiaca', 'potencia', 'cadencia', 'tiempo', 'temperatura', 'pendiente', 'velocidad'])
+        
+        # Predicción (Diferenciando modelos estandarizados de árboles)
         datos_escalados = scaler.transform(datos_entrada)
         p_lr = lr.predict(datos_escalados)[0]
         p_knn = knn.predict(datos_escalados)[0]
         p_rf = rf.predict(datos_entrada)[0]
 
         st.markdown("---")
-        st.subheader("Comparativa de Modelos en Tiempo Real")
+        st.subheader("Cuadro Comparativo: Predicción vs Calidad del Modelo")
 
-        # Visualización en métricas
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Regresión Lineal", f"{p_lr:.2f}%")
-        m2.metric("KNN (Distancias)", f"{p_knn:.2f}%")
-        m3.metric("Random Forest", f"{p_rf:.2f}%")
+        # Construcción del Cuadro Comparativo Final
+        if 'metricas_globales' in st.session_state:
+            m = st.session_state['metricas_globales']
+            cuadro_final = pd.DataFrame({
+                "Modelo": ["Regresión Lineal", "KNN", "Random Forest"],
+                "Predicción (%)": [p_lr, p_knn, p_rf],
+                "RMSE (Error)": m["RMSE"].values,
+                "R2 (Precisión)": m["R2 Score"].values
+            })
+            
+            # Mostrar tabla con formato
+            st.table(cuadro_final.style.format({
+                "Predicción (%)": "{:.2f}",
+                "RMSE (Error)": "{:.4f}",
+                "R2 (Precisión)": "{:.4f}"
+            }))
+            st.caption("Nota: El RMSE indica el margen de error promedio del modelo sobre datos desconocidos.")
+        else:
+            # Si no han evaluado, mostrar solo predicciones básicas
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Regresión Lineal", f"{p_lr:.2f}%")
+            m2.metric("KNN", f"{p_knn:.2f}%")
+            m3.metric("Random Forest", f"{p_rf:.2f}%")
+            st.info("💡 Ejecute 'Evaluación de Modelos' en la otra pestaña para ver RMSE y R2 aquí.")
 
         # Gráfico comparativo
-        res_sim = pd.DataFrame({
-            "Modelo": ["Regresión Lineal", "KNN", "Random Forest"],
-            "Fatiga (%)": [p_lr, p_knn, p_rf]
-        })
-        st.bar_chart(res_sim.set_index("Modelo"))
+        res_sim = pd.DataFrame({"Fatiga (%)": [p_lr, p_knn, p_rf]}, index=["Regresión Lineal", "KNN", "Random Forest"])
+        st.bar_chart(res_sim)
 
     else:
         st.info("⚠️ Los modelos aún no han sido entrenados. Use la barra lateral para comenzar.")
