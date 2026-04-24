@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import joblib
 import numpy as np
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, root_mean_squared_error, r2_score
 
 # Importación de tus funciones locales
 from modelos_estandar import generar_archivos_separados, entrenar_modelos_distancia
@@ -91,10 +91,11 @@ with tab_eval:
             # Métricas calculando RMSE (Raíz de MSE)
             res = pd.DataFrame({
                 "Modelo": ["Regresión Lineal", "KNN", "Random Forest"],
+               # Busca esta parte en tu código y cámbiala:
                 "RMSE": [
-                    mean_squared_error(y_test, p_lr, squared=False),
-                    mean_squared_error(y_test, p_knn, squared=False),
-                    mean_squared_error(y_test, p_rf, squared=False)
+                    root_mean_squared_error(y_test, p_lr), 
+                    root_mean_squared_error(y_test, p_knn), 
+                    root_mean_squared_error(y_test, p_rf)
                 ],
                 "R2 Score": [r2_score(y_test, p_lr), r2_score(y_test, p_knn), r2_score(y_test, p_rf)]
             })
