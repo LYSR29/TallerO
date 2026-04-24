@@ -105,5 +105,50 @@ with tab_eval:
             st.error("Primero debe completar la configuración en la barra lateral.")
 
 with tab_sim:
-    st.write("Sección disponible para pruebas con datos manuales.")
-    # Aquí podrías agregar sliders para que el profesor pruebe valores
+    st.header("Simulador de Entrenamiento")
+    
+    if 'modelos' in st.session_state:
+        lr, knn, rf, scaler = st.session_state['modelos']
+        
+        st.write("Ajuste los parámetros del entrenamiento para predecir el nivel de fatiga resultante.")
+        
+        # Layout de 3 columnas para los controles
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            fc = st.slider("Frecuencia Cardíaca (bpm)", 60, 200, 140)
+            pot = st.slider("Potencia (Watts)", 0, 500, 200)
+            
+        with col2:
+            cad = st.slider("Cadencia (rpm)", 40, 120, 85)
+            vel = st.slider("Velocidad (km/h)", 5, 60, 30)
+            
+        with col3:
+            temp = st.slider("Temperatura (°C)", 5, 45, 25)
+            pend = st.slider("Pendiente (%)", -10, 15, 2)
+            
+        tiempo = st.number_input("Tiempo total de actividad (min)", 1, 300, 60)
+
+        # 1. Crear el DataFrame con el orden exacto de las columnas de entrenamiento
+        datos_entrada = pd.DataFrame([[fc, pot, cad, tiempo, temp, pend, vel]], 
+                                    columns=['frecuencia_cardiaca', 'potencia', 'cadencia', 'tiempo', 'temperatura', 'pendiente', 'velocidad'])
+
+        st.markdown("---")
+        
+        # 2. Realizar predicciones
+        # Nota: LR y KNN requieren escalado; Random Forest usa datos directos
+        datos_escalados = scaler.transform(datos_entrada)
+        
+        pred_lr = lr.predict(datos_escalados)[0]
+        pred_rf = rf.predict(datos_entrada)[0]
+
+        # 3. Mostrar resultados visuales
+        # Mostramos el resultado de Regresión Lineal ya que fue tu mejor modelo
+        st.subheader(f"Fatiga Estimada: {pred_lr:.2f}%")
+        st.progress(min(max(float(pred_lr/100), 0.0), 1.0))
+        
+        # Comparativa rápida en el pie de página
+        st.caption(f"Comparativa: Random Forest estima {pred_rf:.2f}% de fatiga.")
+        
+    else:
+        st.info("⚠️ Por favor, entrene los modelos en la barra lateral para habilitar el simulador.")
