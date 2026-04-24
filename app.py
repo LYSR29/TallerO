@@ -110,9 +110,19 @@ with tab_sim:
     if 'modelos' in st.session_state:
         lr, knn, rf, scaler = st.session_state['modelos']
         
+        # Inicializar un estado para el aviso si no existe
+        if 'sim_interactuado' not in st.session_state:
+            st.session_state['sim_interactuado'] = False
+
+        # --- AVISO DINÁMICO ---
+        if not st.session_state['sim_interactuado']:
+            st.warning("ℹ️ Los valores mostrados abajo son predicciones base (brutas). Ajuste los sliders para actualizar el cálculo.")
+        else:
+            st.success("✅ Predicciones actualizadas con éxito según los parámetros manuales.")
+        
         st.write("Ajuste los parámetros para ver cómo responden los tres modelos simultáneamente.")
         
-        # Layout de 3 columnas para los controles
+        # Layout de controles
         col1, col2, col3 = st.columns(3)
         with col1:
             fc = st.slider("Frecuencia Cardíaca (bpm)", 60, 200, 140)
@@ -126,34 +136,35 @@ with tab_sim:
             
         tiempo = st.number_input("Tiempo total de actividad (min)", 1, 300, 60)
 
-        # 1. Preparación de datos
+        # Preparación y Predicción
         datos_entrada = pd.DataFrame([[fc, pot, cad, tiempo, temp, pend, vel]], 
                                     columns=['frecuencia_cardiaca', 'potencia', 'cadencia', 'tiempo', 'temperatura', 'pendiente', 'velocidad'])
-
-        # 2. Procesamiento diferenciado
-        # Estandarizamos solo para los modelos que lo requieren
-        datos_escalados = scaler.transform(datos_entrada)
         
-        # 3. Cálculo de predicciones
+        # Detectar cambio en sliders para cambiar el aviso
+        # (Si los valores son distintos a los por defecto, marcamos como interactuado)
+        if fc != 140 or pot != 200 or cad != 85: 
+            st.session_state['sim_interactuado'] = True
+
+        datos_escalados = scaler.transform(datos_entrada)
         p_lr = lr.predict(datos_escalados)[0]
         p_knn = knn.predict(datos_escalados)[0]
-        p_rf = rf.predict(datos_entrada)[0] # Datos crudos para el árbol
+        p_rf = rf.predict(datos_entrada)[0]
 
         st.markdown("---")
-        st.subheader("Predicciones de Fatiga")
+        st.subheader("Comparativa de Modelos en Tiempo Real")
 
-        # Visualización en métricas comparativas
+        # Visualización en métricas
         m1, m2, m3 = st.columns(3)
         m1.metric("Regresión Lineal", f"{p_lr:.2f}%")
         m2.metric("KNN (Distancias)", f"{p_knn:.2f}%")
         m3.metric("Random Forest", f"{p_rf:.2f}%")
 
-        # Gráfico comparativo rápido
-        resultados_sim = pd.DataFrame({
+        # Gráfico comparativo
+        res_sim = pd.DataFrame({
             "Modelo": ["Regresión Lineal", "KNN", "Random Forest"],
-            "Fatiga Predicha (%)": [p_lr, p_knn, p_rf]
+            "Fatiga (%)": [p_lr, p_knn, p_rf]
         })
-        st.bar_chart(resultados_sim.set_index("Modelo"))
+        st.bar_chart(res_sim.set_index("Modelo"))
 
     else:
-        st.info("⚠️ Los modelos aún no han sido entrenados. Use el botón 'Entrenar Algoritmos' en la barra lateral.")
+        st.info("⚠️ Los modelos aún no han sido entrenados. Use la barra lateral para comenzar.")
